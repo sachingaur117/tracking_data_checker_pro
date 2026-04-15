@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geospatial Tracker Analysis v3.1</title>
+    
+    <!-- Leaflet.js for Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <main class="app-container">
+        <header>
+            <h1>Geospatial Billing Analysis <span class="version-badge">v3.1</span></h1>
+            <p>Systematic Anomaly Detection & Trip Replay</p>
+        </header>
+
+        <!-- Analysis Controls -->
+        <section class="controls-section glass">
+            <h3>Analysis Window</h3>
+            <div class="input-group">
+                <div class="field">
+                    <label for="start-time">Start Time</label>
+                    <input type="text" id="start-time" placeholder="DD-MM-YYYY HH:MM:SS">
+                </div>
+                <div class="field">
+                    <label for="end-time">End Time</label>
+                    <input type="text" id="end-time" placeholder="DD-MM-YYYY HH:MM:SS">
+                </div>
+                <button id="apply-filter" class="btn-primary">Re-Analyze</button>
+            </div>
+            <p class="hint">Leave empty to analyze the full file.</p>
+        </section>
+
+        <!-- Upload Section -->
+        <section class="upload-section glass">
+            <div id="drop-zone" class="drop-zone">
+                <div class="icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <p>Drag & drop your tracking CSV here or <span class="browse">browse</span></p>
+                <input type="file" id="file-input" accept=".csv" hidden>
+            </div>
+        </section>
+
+        <!-- NEW: Map & Replay Section -->
+        <section id="map-section" class="map-section glass hidden">
+            <h3>Interactive Trip Replay</h3>
+            <div id="map"></div>
+            <div class="replay-controls">
+                <div class="slider-container">
+                    <input type="range" id="replaySlider" min="0" max="0" value="0" disabled>
+                    <div class="slider-labels">
+                        <span id="replayTime">00:00:00</span>
+                        <span id="replayMetrics">Points: 0/0</span>
+                    </div>
+                </div>
+                <div class="playback-actions">
+                    <button id="playBtn" class="primary-btn" disabled>Play</button>
+                    <span class="replay-status">Ready</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="results-section" class="results-section hidden">
+            <div class="stats-grid">
+                <div class="stat-card glass analysis-raw">
+                    <h3>Raw Data</h3>
+                    <div class="label">Total Cumulative</div>
+                    <div class="value"><span id="raw-dist">0.00</span> <small>KM</small></div>
+                    <div class="meta"><span id="raw-points">0</span> Raw Points</div>
+                </div>
+                <div class="stat-card glass analysis-cleaned">
+                    <h3>Cleaned Reality</h3>
+                    <div class="label">Verified Business KM</div>
+                    <div class="value highlight"><span id="cleaned-dist">0.00</span> <small>KM</small></div>
+                    <div class="meta"><span id="cleaned-points">0</span> High-Quality Points</div>
+                </div>
+                <div class="stat-card glass analysis-quality">
+                    <h3>Data Quality</h3>
+                    <div class="label">Accuracy Rate</div>
+                    <div class="value"><span id="quality-rate">0</span><small>%</small></div>
+                    <div class="meta"><span id="low-acc-points">0</span> Low-accuracy points removed</div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="anomaly-log glass">
+                    <h3>Anomalies Detected</h3>
+                    <div id="anomaly-list" class="anomaly-list">
+                        <p class="placeholder">No issues detected.</p>
+                    </div>
+                </div>
+                <div class="verdict-card glass">
+                    <h3>Discrepancy Analysis</h3>
+                    <div id="verdict-summary" class="verdict-summary">
+                        Calculate data to see findings.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="glass">
+            <p>&copy; 2026 Senior Geospatial Analyst Dashboard</p>
+        </footer>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>

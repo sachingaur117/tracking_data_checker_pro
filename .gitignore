@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.py
+check_*.py
+scan_*.py
+deep_scan_*.py
+analyze_*.py
+test_*.py
