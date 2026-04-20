@@ -3,14 +3,11 @@ function haversine(lat1, lon1, lat2, lon2) {
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        math_cos(lat1 * Math.PI / 180) * math_cos(lat2 * Math.PI / 180) *
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 }
-
-// Fix for math_cos
-function math_cos(rad) { return Math.cos(rad); }
 
 function formatDate(dateObj) {
     if (!dateObj || isNaN(dateObj.getTime())) return 'N/A';
@@ -20,44 +17,48 @@ function formatDate(dateObj) {
     const h = dateObj.getHours().toString().padStart(2, '0');
     const min = dateObj.getMinutes().toString().padStart(2, '0');
     const s = dateObj.getSeconds().toString().padStart(2, '0');
-    return `${d}-${m}-${y} ${h}:${min}:${s} IST`;
+    return `${d}-${m}-${y} ${h}:${min}:${s}`;
 }
 
 function parseIndianDate(str) {
     if (!str) return null;
-    // Handle DD-MM-YYYY or YYYY-MM-DD
-    const parts = str.split(/[ \-T:/]/);
-    if (parts.length >= 3) {
-        if (parts[0].length === 4) { // YYYY-MM-DD
-            return new Date(str.replace(' ', 'T')).getTime();
-        } else if (parts[2].length === 4) { // DD-MM-YYYY
-            const d = parseInt(parts[0]);
-            const m = parseInt(parts[1]) - 1;
-            const y = parseInt(parts[2]);
-            const h = parseInt(parts[3] || 0);
-            const min = parseInt(parts[4] || 0);
-            const s = parseInt(parts[5] || 0);
-            return new Date(y, m, d, h, min, s).getTime();
+    try {
+        const sStr = str.toString().trim();
+        // Handle ISO
+        if (sStr.includes('T')) return new Date(sStr).getTime();
+        
+        // Handle YYYY-MM-DD or DD-MM-YYYY
+        const parts = sStr.split(/[ \-T:/.]/).map(Number);
+        if (parts.length < 3) return null;
+
+        let y, m, d, h = 0, min = 0, s = 0;
+        if (parts[0] > 1000) { // YYYY-MM-DD
+            y = parts[0]; m = parts[1]; d = parts[2];
+            h = parts[3] || 0; min = parts[4] || 0; s = parts[5] || 0;
+        } else { // DD-MM-YYYY
+            d = parts[0]; m = parts[1]; y = parts[2];
+            h = parts[3] || 0; min = parts[4] || 0; s = parts[5] || 0;
         }
+        
+        const date = new Date(y, m - 1, d, h, min, s);
+        return isNaN(date.getTime()) ? null : date.getTime();
+    } catch (e) {
+        return null;
     }
-    return Date.parse(str.replace(' ', 'T')) || null;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const resultsSection = document.getElementById('results-section');
-    const rawDistEl = document.getElementById('raw-dist');
-    const rawPointsEl = document.getElementById('raw-points');
-    const cleanedDistEl = document.getElementById('cleaned-dist');
-    const verdictTextEl = document.getElementById('verdict-summary');
     const startTimeEl = document.getElementById('start-time');
     const endTimeEl = document.getElementById('end-time');
     const applyFilterBtn = document.getElementById('apply-filter');
-    const versionTag = document.createElement('span');
-    versionTag.style.cssText = 'font-size: 0.7rem; opacity: 0.5; position: fixed; bottom: 10px; right: 10px;';
-    versionTag.innerText = 'Engine: v3.0';
-    document.body.appendChild(versionTag);
+    const auditSummaryEl = document.getElementById('audit-summary');
+    const realityLogEl = document.getElementById('speed-violations-log');
+    const jittersLogEl = document.getElementById('jitter-violations-log');
+    const gapsLogEl = document.getElementById('gap-violations-log');
+    const accuracyLogEl = document.getElementById('accuracy-score');
 
     let currentData = null;
     let map = null;
@@ -69,8 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function initMap() {
         if (map) return;
         map = L.map('map').setView([19.0760, 72.8777], 12); // Default to Mumbai
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors © CARTO'
         }).addTo(map);
         
         pathLayer = L.polyline([], { color: '#3b82f6', weight: 4, opacity: 0.7 }).addTo(map);
@@ -124,6 +125,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        document.getElementById('file-status').innerHTML = `Active File: <strong>${file.name}</strong>`;
+
         Papa.parse(file, {
             header: true,
             complete: results => {
@@ -135,308 +138,204 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function analyze(data) {
         const rawPoints = [];
-        console.log('Analyzing data...', data.length, 'rows found');
-        
         data.forEach((row, index) => {
             try {
                 const payloadKey = Object.keys(row).find(k => k.toLowerCase() === 'vendor_payload');
-                if (!payloadKey || !row[payloadKey]) return;
-
-                const payload = JSON.parse(row[payloadKey]);
-                const lat = parseFloat(payload.latitude || payload.lat);
-                const lon = parseFloat(payload.longitude || payload.lon || payload.lng);
-                const acc = parseFloat(payload.mAccuracy || payload.accuracy || payload.acc || 0);
-                const rawTime = payload.time || row.Action_Date || row.time;
-                let time;
-                if (typeof rawTime === 'number') time = rawTime;
-                else if (typeof rawTime === 'string') {
-                    time = parseIndianDate(rawTime) || index;
+                let lat, lon, acc, time;
+                if (payloadKey && row[payloadKey]) {
+                    const payload = JSON.parse(row[payloadKey]);
+                    lat = parseFloat(payload.latitude || payload.lat);
+                    lon = parseFloat(payload.longitude || payload.lon || payload.lng);
+                    acc = parseFloat(payload.mAccuracy || payload.accuracy || payload.acc || 0);
+                    const rawTime = payload.time || row.Action_Date || row.time;
+                    time = (typeof rawTime === 'number') ? rawTime : (parseIndianDate(rawTime) || index);
                 } else {
-                    time = index;
+                    lat = parseFloat(row.latitude || row.Lat);
+                    lon = parseFloat(row.longitude || row.Lon);
+                    acc = parseFloat(row.accuracy || row.Accuracy || 0);
+                    time = parseIndianDate(row.time || row.Timestamp || row.Action_Date) || index;
                 }
-                const date = formatDate(new Date(time));
-
                 if (!isNaN(lat) && !isNaN(lon)) {
-                    rawPoints.push({ lat, lon, acc, time, date });
+                    rawPoints.push({ lat, lon, acc, time, date: formatDate(new Date(time)) });
                 }
-            } catch (e) {
-                if (index < 5) console.error('Error parsing row', index, e);
-            }
+            } catch (e) {}
         });
 
-        if (rawPoints.length < 2) {
-            alert('Not enough valid tracking data found.');
-            return;
-        }
-
-        // 1. Total File Raw Distance (Original file order baseline)
-        let totalFileRawDist = 0;
-        for (let i = 1; i < rawPoints.length; i++) {
-            totalFileRawDist += haversine(rawPoints[i-1].lat, rawPoints[i-1].lon, rawPoints[i].lat, rawPoints[i].lon);
-        }
-
+        if (rawPoints.length < 2) return alert('No valid data found.');
         rawPoints.sort((a, b) => a.time - b.time);
 
-        // Time Range Filter
-        const startWindow = parseIndianDate(startTimeEl.value) || 0;
-        const endWindow = parseIndianDate(endTimeEl.value) || Infinity;
+        const auditReality = []; // Speed
+        const auditJitters = []; // GPS Jitters
+        const auditGaps = [];    // Continuity
+        const cleanedPoints = [rawPoints[0]];
         
-        const filteredByTime = rawPoints.filter(p => p.time >= startWindow && p.time <= endWindow);
-        const pointsToAnalyze = filteredByTime.length >= 2 ? filteredByTime : rawPoints;
+        let jitterStartIdx = 0;
+        let jitterAccumulatedDist = 0;
 
-        if (filteredByTime.length < 2 && (startTimeEl.value || endTimeEl.value)) {
-            console.warn('Selected time range contains less than 2 points. Falling back to full data.');
-        }
+        for (let i = 1; i < rawPoints.length; i++) {
+            const pPrev = rawPoints[i - 1];
+            const pCurr = rawPoints[i];
+            const dist = haversine(pPrev.lat, pPrev.lon, pCurr.lat, pCurr.lon);
+            const timeDiff = (pCurr.time - pPrev.time) / 1000 / 60; // minutes
 
-        // 2. Window Raw Distance (After chronological sorting)
-        let windowRawDist = 0;
-        for (let i = 1; i < pointsToAnalyze.length; i++) {
-            windowRawDist += haversine(pointsToAnalyze[i-1].lat, pointsToAnalyze[i-1].lon, pointsToAnalyze[i].lat, pointsToAnalyze[i].lon);
-        }
-
-        // 3. Ping-Pong and Gap Detection (Run on ALL sorted raw points)
-        const cleanedRawPoints = [];
-        const anomalies = [];
-        let pingPongDistRemoved = 0;
-        
-        if (pointsToAnalyze.length > 0) {
-            cleanedRawPoints.push(pointsToAnalyze[0]);
-            let i = 1;
-            while (i < pointsToAnalyze.length) {
-                const pLast = cleanedRawPoints[cleanedRawPoints.length - 1];
-                const pCurr = pointsToAnalyze[i];
-                const distOut = haversine(pLast.lat, pLast.lon, pCurr.lat, pCurr.lon);
-                const timeGap = (pCurr.time - pLast.time) / 1000 / 60; // minutes
-                
-                // Gap Detection
-                if (timeGap > 30 || distOut > 10) {
-                    anomalies.push({
-                        type: timeGap > 30 ? 'TIME GAP' : 'DIST GAP',
-                        severity: timeGap > 60 || distOut > 50 ? 'critical' : 'warning',
-                        date: pCurr.date,
-                        detail: `${timeGap.toFixed(0)} min, ${distOut.toFixed(1)} km jump`
+            // 1. Physical Reality (>120km/h)
+            if (timeDiff > 0.01) {
+                const speed = dist / (timeDiff / 60);
+                if (speed > 120) {
+                    auditReality.push({
+                        time: pCurr.date,
+                        speed: speed.toFixed(1),
+                        extra: dist.toFixed(2)
                     });
                 }
+            }
 
-                // Speed Anomaly Detection (> 180 km/h)
-                if (timeGap > 0.01) {
-                    const speed = distOut / (timeGap / 60);
-                    if (speed > 180) {
-                        anomalies.push({
-                            type: 'SPEED JUMP',
-                            severity: 'critical',
-                            date: pCurr.date,
-                            detail: `Impossible speed: ${speed.toFixed(0)} km/h detected`
-                        });
+            // 2. Continuity (>5 mins)
+            if (timeDiff > 5) {
+                auditGaps.push({
+                    start: pPrev.date,
+                    duration: timeDiff.toFixed(1)
+                });
+            }
+
+            // 3. GPS Jitters (Stationary Drift + Spikes)
+            
+            // Spike / Rebound Detection (Jump and come back)
+            // Even a 50m jump that rebounds quickly should be caught as Jitter
+            if (dist > 0.05) { 
+                let reboundIdx = -1;
+                const lookahead = Math.min(i + 10, rawPoints.length); // Quick rebounds
+                for (let j = i + 1; j < lookahead; j++) {
+                    const distBack = haversine(pPrev.lat, pPrev.lon, rawPoints[j].lat, rawPoints[j].lon);
+                    // If it returns to within 30m of the starting point
+                    if (distBack < 0.03) { 
+                        reboundIdx = j;
+                        break;
                     }
                 }
-
-                // 3. Ping-Pong and Spike detection
-                if (distOut > 2) { // Ultra-sensitive for systematic drift
-                    let reboundIndex = -1;
-                    
-                    // Strategy A: Rebound check (Look for return to origin)
-                    const lookahead = Math.min(i + 150, pointsToAnalyze.length);
-                    for (let j = i + 1; j < lookahead; j++) {
-                        const distReturn = haversine(pLast.lat, pLast.lon, pointsToAnalyze[j].lat, pointsToAnalyze[j].lon);
-                        if (distReturn < 5) { // Broad return threshold to catch drift
-                            reboundIndex = j;
-                            break;
-                        }
+                if (reboundIdx !== -1) {
+                    let driftInJump = 0;
+                    for (let k = i; k <= reboundIdx; k++) {
+                        driftInJump += haversine(rawPoints[k-1].lat, rawPoints[k-1].lon, rawPoints[k].lat, rawPoints[k].lon);
                     }
-
-                    // Strategy B: Spike check (Single point outlier)
-                    let isSpike = false;
-                    if (reboundIndex === -1 && i < pointsToAnalyze.length - 1) {
-                        const pNext = pointsToAnalyze[i+1];
-                        const distNext = haversine(pCurr.lat, pCurr.lon, pNext.lat, pNext.lon);
-                        const distBridge = haversine(pLast.lat, pLast.lon, pNext.lat, pNext.lon);
-                        if (distOut > 10 && distNext > 10 && distBridge < 2) {
-                            isSpike = true;
-                        }
-                    }
-
-                    if (reboundIndex !== -1 || isSpike) {
-                        const anomalyType = isSpike ? 'SPIKE' : 'PING-PONG';
-                        
-                        // Calculate net savings (Detour distance vs the bridge we'll create)
-                        let detourDist = distOut;
-                        let bridgeDist = 0;
-                        if (reboundIndex !== -1) {
-                            for(let k = i; k < reboundIndex; k++) {
-                                detourDist += haversine(pointsToAnalyze[k].lat, pointsToAnalyze[k].lon, pointsToAnalyze[k+1].lat, pointsToAnalyze[k+1].lon);
-                            }
-                            bridgeDist = haversine(pLast.lat, pLast.lon, pointsToAnalyze[reboundIndex].lat, pointsToAnalyze[reboundIndex].lon);
-                        } else {
-                            // Single point spike
-                            detourDist += haversine(pCurr.lat, pCurr.lon, pointsToAnalyze[i+1].lat, pointsToAnalyze[i+1].lon);
-                            bridgeDist = haversine(pLast.lat, pLast.lon, pointsToAnalyze[i+1].lat, pointsToAnalyze[i+1].lon);
-                        }
-                        pingPongDistRemoved += (detourDist - bridgeDist);
-
-                        anomalies.push({
-                            type: anomalyType,
-                            severity: 'critical',
-                            date: pCurr.date,
-                            detail: `Detected ${distOut.toFixed(1)}km ${anomalyType.toLowerCase()} jump`
+                    if (driftInJump > 0.05) { // Only log if it adds > 50m
+                        auditJitters.push({
+                            start: pCurr.date,
+                            type: 'Spike Rebound',
+                            drift: driftInJump.toFixed(2)
                         });
-                        console.log(`${anomalyType} Found:`, pCurr.date, distOut.toFixed(2), 'km');
-                        
-                        if (reboundIndex !== -1) i = reboundIndex;
-                        // For spikes, we just skip this one point (index remains i+1 in next loop)
-                        else i++; 
-                        
+                        i = reboundIdx; 
                         continue;
                     }
                 }
-                cleanedRawPoints.push(pCurr);
-                i++;
+            }
+
+            // Stationary Drift Detection (Radius of 50m)
+            const displacement = haversine(rawPoints[jitterStartIdx].lat, rawPoints[jitterStartIdx].lon, pCurr.lat, pCurr.lon);
+            if (displacement < 0.05) { // 50 meters radius
+                jitterAccumulatedDist += dist;
+            } else {
+                // Log even small drifts (10m+) if they accumulate while stationary
+                if (jitterAccumulatedDist > 0.01) { 
+                    auditJitters.push({
+                        start: rawPoints[jitterStartIdx].date,
+                        type: 'Stationary Drift',
+                        drift: jitterAccumulatedDist.toFixed(3) // Higher precision for small jitters
+                    });
+                }
+                jitterStartIdx = i;
+                jitterAccumulatedDist = 0;
+            }
+
+            // 4. Quality Filter (Exclude > 30m accuracy)
+            if (pCurr.acc < 30) {
+                cleanedPoints.push(pCurr);
             }
         }
 
-        // 4. Accuracy Filter (<30m) - Applied on already cleaned points
-        const finalPoints = cleanedRawPoints.filter(p => !p.acc || p.acc < 30);
-        const qualityRate = pointsToAnalyze.length > 0 ? ((finalPoints.length / pointsToAnalyze.length) * 100).toFixed(1) : 0;
-
-        // Calculate Acc-Filter removal dist
-        let distBeforeAcc = 0;
-        for (let i = 1; i < cleanedRawPoints.length; i++){
-            distBeforeAcc += haversine(cleanedRawPoints[i-1].lat, cleanedRawPoints[i-1].lon, cleanedRawPoints[i].lat, cleanedRawPoints[i].lon);
-        }
+        // RPM Milestone Logic
+        const milestoneRpm = [];
+        const segmentSize = Math.max(1, Math.floor(rawPoints.length / 6)); // 6 milestones
         
-        // 5. Final Verified Distance
-        let cleanedDist = 0;
-        for (let i = 1; i < finalPoints.length; i++) {
-            cleanedDist += haversine(finalPoints[i-1].lat, finalPoints[i-1].lon, finalPoints[i].lat, finalPoints[i].lon);
+        for (let m = 0; m < rawPoints.length; m += segmentSize) {
+            const segment = rawPoints.slice(m, m + segmentSize);
+            if (segment.length < 2) continue;
+            
+            const startT = segment[0].time;
+            const endT = segment[segment.length - 1].time;
+            const durationMin = (endT - startT) / 60000; // Corrected to 1 min = 60000ms
+            
+            const rpm = (segment.length / Math.max(1, durationMin)).toFixed(1);
+            const rpmNum = parseFloat(rpm);
+            const status = (rpmNum >= 1.0 && rpmNum <= 20.0) ? 'Optimal' : 'Sub-optimal';
+            
+            milestoneRpm.push({
+                name: `Milestone ${Math.floor(m / segmentSize) + 1}`,
+                time: segment[0].date.split(' ')[1],
+                rpm: rpm,
+                status: status
+            });
         }
-        const accDistRemoved = distBeforeAcc - cleanedDist;
 
-        const isFiltered = !!(startTimeEl.value || endTimeEl.value);
-        const rawToDisplay = isFiltered ? windowRawDist : totalFileRawDist;
-        const countToDisplay = isFiltered ? pointsToAnalyze.length : rawPoints.length;
-        const excludedCount = rawPoints.length - pointsToAnalyze.length;
-        const timeRangeStr = isFiltered ? `${startTimeEl.value || 'Start'} to ${endTimeEl.value || 'End'}` : '';
-        
-        // Update label
-        document.querySelector('.analysis-raw h3').innerText = isFiltered ? 'Raw Data (Window)' : 'Raw Data (Total)';
+        const totalDurationMin = (rawPoints[rawPoints.length - 1].time - rawPoints[0].time) / 60000;
+        const totalRpm = (rawPoints.length / Math.max(1, totalDurationMin)).toFixed(1);
 
-        // Initialize Map and Draw Path
-        initMap();
-        pointsForReplay = pointsToAnalyze;
-        drawTripOnMap(pointsToAnalyze, anomalies);
-
-        displayResults(rawToDisplay, countToDisplay, cleanedDist, finalPoints.length, qualityRate, pointsToAnalyze.length - finalPoints.length, anomalies, isFiltered, timeRangeStr, excludedCount, pingPongDistRemoved, accDistRemoved);
+        displayResults(rawPoints, { reality: auditReality, jitters: auditJitters, gaps: auditGaps }, milestoneRpm, totalRpm);
     }
 
-    function displayResults(rawDist, rawCount, cleanedDist, cleanedCount, qualityRate, lowAccCount, anomalies, isFiltered, timeRangeStr, excludedCount, ppDist, accDist) {
+    function displayResults(rawPoints, audit, milestones, totalRpm) {
         document.getElementById('results-section').classList.remove('hidden');
-        document.getElementById('map-section').classList.remove('hidden');
+        document.getElementById('report-timestamp').innerText = `Generated on: ${new Date().toLocaleString()}`;
         
-        // Force Leaflet to recalculate size now that it's visible
-        if (map) {
-            setTimeout(() => {
-                map.invalidateSize();
-                if (pathLayer && pathLayer.getLatLngs().length > 0) {
-                    map.fitBounds(pathLayer.getBounds(), { padding: [40, 40] });
-                }
-            }, 100);
-        }
+        // Calculate Total Distance Suppressed
+        const totalExtraReality = audit.reality.reduce((sum, d) => sum + parseFloat(d.extra), 0);
+        const totalDriftJitter = audit.jitters.reduce((sum, d) => sum + parseFloat(d.drift), 0);
+        const totalSuppressed = (totalExtraReality + totalDriftJitter).toFixed(2);
 
-        document.getElementById('raw-dist').innerText = rawDist.toFixed(2);
-        document.getElementById('raw-points').innerText = rawCount;
-        document.getElementById('cleaned-dist').innerText = cleanedDist.toFixed(2);
-        document.getElementById('cleaned-points').innerText = cleanedCount;
-        document.getElementById('quality-rate').innerText = qualityRate;
-        document.getElementById('low-acc-points').innerText = lowAccCount;
+        // Update Count Header
+        document.getElementById('speed-count').innerText = audit.reality.length;
+        document.getElementById('jitter-count').innerText = audit.jitters.length;
+        document.getElementById('gap-count').innerText = audit.gaps.length;
+        document.getElementById('accuracy-score-report').innerText = totalRpm + ' RPM';
 
-        const anomalyList = document.getElementById('anomaly-list');
-        anomalyList.innerHTML = anomalies.length ? '' : '<p class="placeholder">No issues detected.</p>';
-        anomalies.forEach(a => {
-            const div = document.createElement('div');
-            let badgeClass = a.severity === 'critical' ? 'badge-red' : 'badge-orange';
-            if (a.type === 'SPEED JUMP') badgeClass = 'badge-purple';
-            if (a.type === 'PING-PONG' || a.type === 'SPIKE') badgeClass = 'badge-red';
-            
-            div.className = `anomaly-item ${a.severity}`;
-            div.innerHTML = `
-                <span class="timestamp">${a.date} <span class="badge ${badgeClass}">${a.type}</span></span>
-                <span class="detail">${a.detail}</span>
-            `;
-            anomalyList.appendChild(div);
-        });
+        const populate = (id, data, tpl) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.innerHTML = data.length ? data.map(tpl).join('') : '<tr><td colspan="4" class="placeholder">Compliance verified. No issues detected.</td></tr>';
+            }
+        };
 
-        const inflation = rawDist > 0 ? ((rawDist - cleanedDist) / cleanedDist * 100).toFixed(1) : 0;
-        const verdictSummary = document.getElementById('verdict-summary');
-        
-        let filterHtml = isFiltered ? 
-            `<div class="filter-status">
-                <span class="badge badge-purple">ACTIVE FILTER</span> 
-                <span>Analyzing ${timeRangeStr}</span>
-                <p style="font-size:0.8rem; opacity:0.7;">Time filter excluded ${excludedCount} points from assessment.</p>
-            </div>` : '';
+        // Populate Milestone RPM
+        populate('milestone-rpm-log', milestones, d => `
+            <tr>
+                <td>${d.name}</td>
+                <td>${d.time}</td>
+                <td><span class="badge ${d.status === 'Optimal' ? 'badge-green' : 'badge-orange'}">${d.status}</span></td>
+                <td><strong>${d.rpm} RPM</strong></td>
+            </tr>
+        `);
 
-        verdictSummary.innerHTML = `
-            ${filterHtml}
-            <p style="margin-top:1rem;">Analysis of <strong>${rawCount}</strong> points finished with <strong>${anomalies.length}</strong> major anomalies.</p>
-            <p>Total Distance Inflation: <strong>${inflation}%</strong></p>
-            
-            <div style="margin: 1.5rem 0; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
-                <h4 style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.5rem;">NET DEDUCTIONS (SAVINGS)</h4>
-                <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem;">
-                    <span>Eliminated GPS Jumps:</span>
-                    <span style="color:#f87171; font-weight:700;">- ${ppDist.toFixed(2)} KM</span>
-                </div>
-                <div style="display:flex; justify-content:space-between;">
-                    <span>Accuracy Filter (Jitter):</span>
-                    <span style="color:#fbbf24; font-weight:700;">- ${accDist.toFixed(2)} KM</span>
-                </div>
-            </div>
+        populate('speed-violations-log', audit.reality, d => `<tr><td>${d.time.split(' ')[1]}</td><td>Speed Spike</td></tr>`);
+        populate('jitter-violations-log', audit.jitters, d => `<tr><td>${d.start.split(' ')[1]}</td><td>${d.type}</td></tr>`);
+        populate('gap-violations-log', audit.gaps, d => `<tr><td>${d.start.split(' ')[1]}</td><td>${d.duration} m</td></tr>`);
 
-            <p>The system reported ${rawDist.toFixed(2)} KM, but the verified business distance is <strong>${cleanedDist.toFixed(2)} KM</strong>.</p>
-            <p style="margin-top:20px; color:var(--text-secondary); font-size:0.9rem;">Cleaned data excludes all GPS ping-pongs and verified accuracy-based noise.</p>
-        `;
-
-        document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+        initMap();
+        pointsForReplay = rawPoints;
+        drawTripOnMap(rawPoints, []);
     }
 
     function drawTripOnMap(points, anomalies) {
         if (!map) initMap();
-        
-        // Clear previous
         markerLayer.clearLayers();
         pathLayer.setLatLngs([]);
-
         if (points.length === 0) return;
-
         const latLngs = points.map(p => [p.lat, p.lon]);
         pathLayer.setLatLngs(latLngs);
-        
-        // Fit bounds
         map.fitBounds(pathLayer.getBounds(), { padding: [40, 40] });
-
-        // Add Anomaly Markers (Ping-Pongs)
-        anomalies.forEach(a => {
-            if (a.type === 'PING-PONG' || a.type === 'SPIKE') {
-                const point = points.find(p => p.date === a.date);
-                if (point) {
-                    L.circleMarker([point.lat, point.lon], {
-                        radius: 8,
-                        fillColor: '#ef4444',
-                        color: '#fff',
-                        weight: 2,
-                        opacity: 1,
-                        fillOpacity: 0.8
-                    }).addTo(markerLayer).bindPopup(`<b>${a.type}</b><br>${a.detail}`);
-                }
-            }
-        });
-
-        // Setup Slider
+        
         const slider = document.getElementById('replaySlider');
-        slider.disabled = false;
         slider.max = points.length - 1;
         slider.value = 0;
-        
         updateReplay(0);
     }
 
@@ -451,25 +350,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateReplay(index) {
         const point = pointsForReplay[index];
         if (!point) return;
-
         vehicleMarker.setLatLng([point.lat, point.lon]);
         replayTime.innerText = point.date.split(' ')[1] || point.date;
-        replayMetrics.innerText = `Points: ${index + 1}/${pointsForReplay.length} | Acc: ${point.acc}m`;
-        
-        document.querySelector('.replay-status').innerText = `At: ${point.date}`;
+        replayMetrics.innerText = `Point: ${index + 1}/${pointsForReplay.length} | Acc: ${point.acc}m`;
     }
 
-    // Playback logic
     let playInterval = null;
     const playBtn = document.getElementById('playBtn');
-    
-    playBtn.disabled = false;
-    playBtn.addEventListener('click', () => {
+    playBtn.onclick = () => {
         if (playInterval) {
             clearInterval(playInterval);
             playInterval = null;
-            playBtn.innerText = 'Play';
-            document.querySelector('.replay-status').innerText = 'Paused';
+            playBtn.innerText = 'Play Replay';
         } else {
             playBtn.innerText = 'Pause';
             playInterval = setInterval(() => {
@@ -480,9 +372,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     clearInterval(playInterval);
                     playInterval = null;
-                    playBtn.innerText = 'Play';
+                    playBtn.innerText = 'Play Replay';
                 }
             }, 100);
         }
-    });
+    };
 });

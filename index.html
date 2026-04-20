@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Geospatial Tracker Analysis v3.1</title>
+    <title>Moveinsync Compliance Report</title>
     
     <!-- Leaflet.js for Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -21,27 +21,30 @@
         <div class="blob blob-3"></div>
     </div>
 
-    <main class="app-container">
+    <div class="container">
         <header>
-            <h1>Geospatial Billing Analysis <span class="version-badge">v3.1</span></h1>
-            <p>Systematic Anomaly Detection & Trip Replay</p>
+            <div class="brand-header">
+                <div class="header-text">
+                    <h1>Compliance Audit Dashboard</h1>
+                    <p>Internal Tracking Audit & Dispute Resolution</p>
+                </div>
+            </div>
         </header>
 
-        <!-- Analysis Controls -->
-        <section class="controls-section glass">
-            <h3>Analysis Window</h3>
-            <div class="input-group">
+        <!-- Configuration Section -->
+        <section class="config-section glass">
+            <div class="config-grid">
                 <div class="field">
-                    <label for="start-time">Start Time</label>
+                    <label for="start-time">Audit Start</label>
                     <input type="text" id="start-time" placeholder="DD-MM-YYYY HH:MM:SS">
                 </div>
                 <div class="field">
-                    <label for="end-time">End Time</label>
+                    <label for="end-time">Audit End</label>
                     <input type="text" id="end-time" placeholder="DD-MM-YYYY HH:MM:SS">
                 </div>
-                <button id="apply-filter" class="btn-primary">Re-Analyze</button>
+                <button id="apply-filter" class="btn-primary">Generate Report</button>
             </div>
-            <p class="hint">Leave empty to analyze the full file.</p>
+            <p class="hint">Upload a vendor tracking CSV to begin the compliance audit.</p>
         </section>
 
         <!-- Upload Section -->
@@ -50,73 +53,132 @@
                 <div class="icon">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 </div>
-                <p>Drag & drop your tracking CSV here or <span class="browse">browse</span></p>
+                <p id="file-status">Drop vendor CSV here or <span class="browse">browse files</span></p>
                 <input type="file" id="file-input" accept=".csv" hidden>
             </div>
         </section>
 
-        <!-- NEW: Map & Replay Section -->
-        <section id="map-section" class="map-section glass hidden">
-            <h3>Interactive Trip Replay</h3>
-            <div id="map"></div>
-            <div class="replay-controls">
-                <div class="slider-container">
-                    <input type="range" id="replaySlider" min="0" max="0" value="0" disabled>
-                    <div class="slider-labels">
+        <!-- Main Results Area -->
+        <main id="results-section" class="hidden">
+            <!-- Official Audit Header -->
+            <div class="report-header glass">
+                <div class="report-meta">
+                    <h2>Compliance Data Integrity Report</h2>
+                    <p id="report-timestamp">Generated on: </p>
+                </div>
+                <div class="audit-counts-grid">
+                    <div class="count-box">
+                        <span class="count-label">Speed Anomalies</span>
+                        <span id="speed-count" class="count-num">0</span>
+                    </div>
+                    <div class="count-box">
+                        <span class="count-label">GPS Jitters</span>
+                        <span id="jitter-count" class="count-num">0</span>
+                    </div>
+                    <div class="count-box">
+                        <span class="count-label">Signal Gaps</span>
+                        <span id="gap-count" class="count-num">0</span>
+                    </div>
+                    <div class="count-box">
+                        <span class="count-label">RPM Score</span>
+                        <span id="accuracy-score-report" class="count-num">--%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RPM Milestone Data Table -->
+            <!-- RPM Milestone Data Table -->
+            <h2 class="section-title">RPM of Milestone Data <div class="info-btn" data-tooltip="1. Pulse Health Check at milestones. 2. Optimal Rate: 1.0 - 20.0 RPM. 3. Identifies signal frequency anomalies.">i</div></h2>
+            <div class="report-card glass">
+                <div class="table-container large">
+                    <table id="milestone-rpm-log-table">
+                        <thead>
+                            <tr>
+                                <th>Milestone</th>
+                                <th>Timestamp</th>
+                                <th>Status</th>
+                                <th>Pulse Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="milestone-rpm-log"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <h2 class="section-title">Detailed Anomaly Logs</h2>
+            <div class="audit-grid">
+                <!-- 1. Physical Reality -->
+                <div class="audit-card glass">
+                    <div class="audit-header">
+                        <div class="title-row">
+                            <h4>1. Physical Reality</h4>
+                            <div class="info-btn" data-tooltip="1. Policy: Max 120 km/h. 2. Alert: Teleportation/Glitches. 3. Identification: Unrealistic speed segments.">i</div>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Time</th><th>Anomaly Type</th></tr>
+                            </thead>
+                            <tbody id="speed-violations-log"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2. GPS Jitters -->
+                <div class="audit-card glass">
+                    <div class="audit-header">
+                        <div class="title-row">
+                            <h4>2. GPS Jitters</h4>
+                            <div class="info-btn" data-tooltip="1. Sensitivity: 50m radius. 2. Spike: >50m jump-back. 3. Stationary Drift: Summed path KM suppressed.">i</div>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Time</th><th>Jitter Type</th></tr>
+                            </thead>
+                            <tbody id="jitter-violations-log"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. Continuity -->
+                <div class="audit-card glass">
+                    <div class="audit-header">
+                        <div class="title-row">
+                            <h4>3. Continuity</h4>
+                            <div class="info-btn" data-tooltip="1. Gap Limit: 5 Minutes. 2. Blackout Alert: Missing GPS feed. 3. Risk: Straight-line billing inflation.">i</div>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Start</th><th>Duration</th></tr>
+                            </thead>
+                            <tbody id="gap-violations-log"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="map-section glass">
+                <div id="map"></div>
+                <div class="replay-controls">
+                    <input type="range" id="replaySlider" min="0" max="100" value="0">
+                    <div class="controls-row">
                         <span id="replayTime">00:00:00</span>
-                        <span id="replayMetrics">Points: 0/0</span>
-                    </div>
-                </div>
-                <div class="playback-actions">
-                    <button id="playBtn" class="primary-btn" disabled>Play</button>
-                    <span class="replay-status">Ready</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Results Section -->
-        <section id="results-section" class="results-section hidden">
-            <div class="stats-grid">
-                <div class="stat-card glass analysis-raw">
-                    <h3>Raw Data</h3>
-                    <div class="label">Total Cumulative</div>
-                    <div class="value"><span id="raw-dist">0.00</span> <small>KM</small></div>
-                    <div class="meta"><span id="raw-points">0</span> Raw Points</div>
-                </div>
-                <div class="stat-card glass analysis-cleaned">
-                    <h3>Cleaned Reality</h3>
-                    <div class="label">Verified Business KM</div>
-                    <div class="value highlight"><span id="cleaned-dist">0.00</span> <small>KM</small></div>
-                    <div class="meta"><span id="cleaned-points">0</span> High-Quality Points</div>
-                </div>
-                <div class="stat-card glass analysis-quality">
-                    <h3>Data Quality</h3>
-                    <div class="label">Accuracy Rate</div>
-                    <div class="value"><span id="quality-rate">0</span><small>%</small></div>
-                    <div class="meta"><span id="low-acc-points">0</span> Low-accuracy points removed</div>
-                </div>
-            </div>
-
-            <div class="dashboard-grid">
-                <div class="anomaly-log glass">
-                    <h3>Anomalies Detected</h3>
-                    <div id="anomaly-list" class="anomaly-list">
-                        <p class="placeholder">No issues detected.</p>
-                    </div>
-                </div>
-                <div class="verdict-card glass">
-                    <h3>Discrepancy Analysis</h3>
-                    <div id="verdict-summary" class="verdict-summary">
-                        Calculate data to see findings.
+                        <button id="playBtn">Play Replay</button>
+                        <span id="replayMetrics">Points: 0</span>
                     </div>
                 </div>
             </div>
-        </section>
+        </main>
 
         <footer class="glass">
-            <p>&copy; 2026 Senior Geospatial Analyst Dashboard</p>
+            <p>Verification Standard v5.0 | Road Path Matching (RPM) Compliance</p>
         </footer>
-    </main>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <script src="main.js"></script>
