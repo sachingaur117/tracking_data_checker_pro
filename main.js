@@ -298,6 +298,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('gap-count').innerText = audit.gaps.length;
         document.getElementById('accuracy-score-report').innerText = totalRpm + ' RPM';
 
+        const downloadBtn = document.getElementById('download-report-btn');
+        downloadBtn.style.display = 'inline-block';
+        downloadBtn.onclick = () => generateReportCSV(audit, milestones, totalRpm);
+
         const populate = (id, data, tpl) => {
             const el = document.getElementById(id);
             if (el) {
@@ -348,11 +352,69 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function updateReplay(index) {
-        const point = pointsForReplay[index];
-        if (!point) return;
-        vehicleMarker.setLatLng([point.lat, point.lon]);
-        replayTime.innerText = point.date.split(' ')[1] || point.date;
-        replayMetrics.innerText = `Point: ${index + 1}/${pointsForReplay.length} | Acc: ${point.acc}m`;
+        if (!pointsForReplay || index >= pointsForReplay.length) return;
+        const p = pointsForReplay[index];
+        if (!vehicleMarker) {
+            vehicleMarker = L.circleMarker([p.lat, p.lon], { color: '#ef4444', radius: 6, fillOpacity: 1 }).addTo(map);
+        } else {
+            vehicleMarker.setLatLng([p.lat, p.lon]);
+        }
+        document.getElementById('replaySpeed').innerText = `${p.date} | Acc: ${p.acc}m`;
+        document.getElementById('replaySlider').value = index;
+    }
+
+    function generateReportCSV(audit, milestones, totalRpm) {
+        let csvContent = "";
+        
+        // 1. Summary Header
+        csvContent += "REPORT GENERATED," + new Date().toLocaleString() + "\n";
+        csvContent += "TOTAL RPM SCORE," + totalRpm + "\n";
+        csvContent += "SPEED ANOMALIES," + audit.reality.length + "\n";
+        csvContent += "GPS JITTERS," + audit.jitters.length + "\n";
+        csvContent += "SIGNAL GAPS," + audit.gaps.length + "\n\n";
+        
+        // 2. RPM Milestones
+        csvContent += "--- RPM MILESTONES ---\n";
+        csvContent += "Milestone,Timestamp,Status,Pulse Rate (RPM)\n";
+        milestones.forEach(m => {
+            csvContent += `${m.name},${m.time},${m.status},${m.rpm}\n`;
+        });
+        csvContent += "\n";
+        
+        // 3. Physical Reality (Speed)
+        csvContent += "--- SPEED ANOMALIES (>120 km/h) ---\n";
+        csvContent += "Time,Anomaly Type\n";
+        audit.reality.forEach(r => {
+            csvContent += `${r.time},Speed Spike\n`;
+        });
+        csvContent += "\n";
+        
+        // 4. GPS Jitters
+        csvContent += "--- GPS JITTERS (50m Radius) ---\n";
+        csvContent += "Time,Jitter Type\n";
+        audit.jitters.forEach(j => {
+            csvContent += `${j.start},${j.type}\n`;
+        });
+        csvContent += "\n";
+        
+        // 5. Continuity Gaps
+        csvContent += "--- SIGNAL GAPS (>5 Mins) ---\n";
+        csvContent += "Start Time,Duration (Minutes)\n";
+        audit.gaps.forEach(g => {
+            csvContent += `${g.start},${g.duration}\n`;
+        });
+        csvContent += "\n";
+        
+        // Trigger Download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", "compliance_audit_report_" + Date.now() + ".csv");
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     let playInterval = null;
